@@ -1,6 +1,6 @@
 import pytest
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from caringcaribou.utils.constants import ARBITRATION_ID_MAX_EXTENDED
 from caringcaribou.utils.iso15765_2 import IsoTp
@@ -295,13 +295,13 @@ class TestIso15765_2:
     def test_empty_message_no_padding(self, isotp_mocked_bus):
         message = []
         frames = isotp_mocked_bus.get_frames_from_message(message, padding_value=None)
-        # TODO: should this work this way?
+        # TODO: should that work this way?
         assert frames == [[0x00]]
 
     def test_empty_message_with_padding(self, isotp_mocked_bus):
         message = []
         frames = isotp_mocked_bus.get_frames_from_message(message)
-        # TODO: should this work this way?
+        # TODO: should that work this way?
         assert frames == [[0x0] * 8]
 
     # Transmit
@@ -310,9 +310,97 @@ class TestIso15765_2:
         assert result is None
 
     def test_transmit_one_frame(self, isotp_mocked_bus):
-        frames = [[0x01, 0x02, 0x03]]
+        frames_to_send = [[0x01, 0x02, 0x03]]
         isotp_mocked_bus.send_message = MagicMock()
+
+        isotp_mocked_bus.transmit(frames_to_send, self.dummy_request_id, self.dummy_response_id)
+
+        isotp_mocked_bus.send_message.assert_called_once_with(frames_to_send[0], 0x7E0)
+
+    def test_transmit_multiple_frames_flow_control(self, isotp_mocked_bus):
+        frames_to_send = [
+            # FF
+            [0x10, 0x0A, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
+            # CF
+            [0x21, 0x07, 0x08, 0x09, 0x0A],
+        ]
+        isotp_mocked_bus.send_message = MagicMock()
+        isotp_mocked_bus.decode_fc = MagicMock(return_value=(IsoTp.FC_FS_CTS, 10, 0))  # Continue to send
+        isotp_mocked_bus.bus = MagicMock()
+        isotp_mocked_bus.bus.recv = MagicMock(return_value=MagicMock(arbitration_id=0x7E8, data=[0x30, 0x05, 0x00]))
+        isotp_mocked_bus.transmit(frames_to_send, self.dummy_request_id, self.dummy_response_id)
+        assert isotp_mocked_bus.send_message.call_count == 2
+
+    def test_transmit_multiple_frames_flow_control_wait(self, isotp_mocked_bus):
+        frames = [
+            # FF
+            [0x10, 0x0A, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
+            # CF
+            [0x21, 0x07, 0x08, 0x09, 0x0A],
+        ]
+        isotp_mocked_bus.send_message = MagicMock()
+        isotp_mocked_bus.decode_fc = MagicMock(return_value=(IsoTp.FC_FS_WAIT, 0, 0))  # Wait
+        isotp_mocked_bus.bus = MagicMock()
+        isotp_mocked_bus.bus.recv = MagicMock(side_effect=[MagicMock(arbitration_id=self.dummy_response_id, data=[0x30, 0x05, 0x00]), None])
+
+        result = isotp_mocked_bus.transmit(frames, self.dummy_request_id, self.dummy_response_id)
+
+        # The transmission should be interrupted, CF shall not be sent.
+        isotp_mocked_bus.send_message.assert_called_once_with(frames[0], self.dummy_request_id)
+        assert result is None
+
+    def test_transmit_multiple_frames_flow_control_overflow(self, isotp_mocked_bus):
+        frames = [
+            # FF
+            [0x10, 0x0A, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
+            # CF
+            [0x21, 0x07, 0x08, 0x09, 0x0A],
+        ]
+        isotp_mocked_bus.send_message = MagicMock()
+        isotp_mocked_bus.decode_fc = MagicMock(return_value=(IsoTp.FC_FS_OVFLW, 0, 0))  # Overflow
+        isotp_mocked_bus.bus = MagicMock()
+        isotp_mocked_bus.bus.recv = MagicMock(return_value=MagicMock(arbitration_id=self.dummy_response_id, data=[0x30, 0x05, 0x00]))
+
+        result = isotp_mocked_bus.transmit(frames, self.dummy_request_id, self.dummy_response_id)
+
+        # The transmission should be interrupted, CF shall not be sent.
+        isotp_mocked_bus.send_message.assert_called_once_with(frames[0], self.dummy_request_id)
+        assert result is None
+
+    def test_transmit_multiple_frames_timeout(self, isotp_mocked_bus):
+        frames = [
+            # FF
+            [0x10, 0x0A, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
+            # CF
+            [0x21, 0x07, 0x08, 0x09, 0x0A],
+        ]
+        isotp_mocked_bus.send_message = MagicMock()
+        isotp_mocked_bus.bus = MagicMock()
+        isotp_mocked_bus.bus.recv = MagicMock(return_value=None)  # No response from the bus
+
+        result = isotp_mocked_bus.transmit(frames, self.dummy_request_id, self.dummy_response_id)
+
+        # The transmission should be interrupted, CF shall not be sent.
+        isotp_mocked_bus.send_message.assert_called_once_with(frames[0], self.dummy_request_id)
+        assert result is None
+
+    @patch('time.sleep', return_value=None)
+    def test_transmit_multiple_frames_stmin(self, mock_sleep, isotp_mocked_bus):
+        frames = [
+            # FF
+            [0x10, 0x0A, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
+            # CF1
+            [0x21, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D],
+            # CF2
+            [0x22, 0x0E, 0x0F]
+        ]
+        isotp_mocked_bus.send_message = MagicMock()
+        isotp_mocked_bus.decode_fc = MagicMock(return_value=(IsoTp.FC_FS_CTS, 10, 10))  # STmin = 10 ms
+        isotp_mocked_bus.bus = MagicMock()
+        isotp_mocked_bus.bus.recv = MagicMock(return_value=MagicMock(arbitration_id=self.dummy_response_id, data=[0x30, 0x05, 0x00]))
 
         isotp_mocked_bus.transmit(frames, self.dummy_request_id, self.dummy_response_id)
 
-        isotp_mocked_bus.send_message.assert_called_once_with(frames[0], 0x7E0)
+        # Sleep should be called with value of the STmin.
+        mock_sleep.assert_called_with(0.01)
+        assert isotp_mocked_bus.send_message.call_count == 3
