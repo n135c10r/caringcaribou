@@ -1,9 +1,74 @@
+import pytest
+
 from unittest.mock import MagicMock
 from caringcaribou.utils.iso14229_1 import ServiceID, Constants, NegativeResponseCodes
 
 
-class Test_iso14229_1:
+class TestRequestSeedOrSendKey:
+    @pytest.mark.parametrize(
+        "seed_request, is_valid",
+        [
+            (0x01, True),
+            (0x03, True),
+            (0x05, True),
+            (0x09, True),
+            (0x0D, True),
+            (0x21, True),
+            (0x3F, True),
+            (0x41, True),
+            (0x0, False),
+            (0x02, False),
+            (0x04, False),
+            (0x10, False),
+            (0x0E, False),
+            (0x22, False),
+            (0x40, False),
+            (0x43, False),
+        ],
+    )
+    def test_is_valid_request_seed_level(self, seed_request, is_valid, request_seed_or_send_key):
+        assert request_seed_or_send_key.is_valid_request_seed_level(seed_request) is is_valid
 
+    @pytest.mark.parametrize(
+        "key_request, is_valid",
+        [
+            (0x0, False),
+            (0x01, False),
+            (0x03, False),
+            (0x05, False),
+            (0x09, False),
+            (0x0D, False),
+            (0x21, False),
+            (0x3F, False),
+            (0x44, False),
+            (0x02, True),
+            (0x04, True),
+            (0x0E, True),
+            (0x22, True),
+            (0x40, True),
+            (0x42, True),
+        ],
+    )
+    def test_is_valid_send_key_level(self, key_request, is_valid, request_seed_or_send_key):
+        assert request_seed_or_send_key.is_valid_send_key_level(key_request) is is_valid
+
+    @pytest.mark.parametrize(
+        "seed_request, key_request",
+        [
+            (0x01, 0x02),
+            (0x05, 0x06),
+            (0x0D, 0x0E),
+            (0x19, 0x1A),
+            (0x2F, 0x30),
+            (0x39, 0x3A),
+            (0x41, 0x42),
+        ],
+    )
+    def test_get_send_key_for_request_seed(self, seed_request, key_request, request_seed_or_send_key):
+        assert request_seed_or_send_key.get_send_key_for_request_seed(seed_request) == key_request
+
+
+class Test_iso14229_1:
     def test_get_service_response_id(self, iso14229_1):
         request_id = 0x10
         expected_response_id = request_id + 0x40
@@ -38,7 +103,11 @@ class Test_iso14229_1:
 
     def test_receive_response_pending(self, iso14229_1):
         expected_response = [0x50, 0x02, 0x03]
-        pending_response = [Constants.NR_SI, 0x01, NegativeResponseCodes.REQUEST_CORRECTLY_RECEIVED_RESPONSE_PENDING]
+        pending_response = [
+            Constants.NR_SI,
+            0x01,
+            NegativeResponseCodes.REQUEST_CORRECTLY_RECEIVED_RESPONSE_PENDING,
+        ]
         iso14229_1.tp.indication = MagicMock(side_effect=[pending_response, expected_response])
         result = iso14229_1.receive_response(iso14229_1.P3_CLIENT)
 
@@ -87,7 +156,13 @@ class Test_iso14229_1:
         data = [0x56, 0x78]
         iso14229_1.tp.indication = MagicMock(return_value=expected_response)
         iso14229_1.tp.send_request = MagicMock()
-        expected_request = [ServiceID.INPUT_OUTPUT_CONTROL_BY_IDENTIFIER, 0x12, 0x34, 0x56, 0x78]
+        expected_request = [
+            ServiceID.INPUT_OUTPUT_CONTROL_BY_IDENTIFIER,
+            0x12,
+            0x34,
+            0x56,
+            0x78,
+        ]
         response = iso14229_1.input_output_control_by_identifier(routine_id, data)
 
         iso14229_1.tp.send_request.assert_called_once_with(expected_request)
@@ -100,7 +175,11 @@ class Test_iso14229_1:
         identifier = 0x1234
         sub_function = 0x01
         sub_function_arg = [
-            MagicMock(sourceDataIdentifier=0x1234, positionInSourceDataRecord=0x01, memorySize=0x01)
+            MagicMock(
+                sourceDataIdentifier=0x1234,
+                positionInSourceDataRecord=0x01,
+                memorySize=0x01,
+            )
         ]
 
         response = iso14229_1.dynamically_define_data_identifier(identifier, sub_function, sub_function_arg)
@@ -167,10 +246,7 @@ class Test_iso14229_1:
         response = iso14229_1.security_access_send_key(sec_acc_lvl, key)
 
         iso14229_1.tp.send_request.assert_called_once_with(
-            [
-                ServiceID.SECURITY_ACCESS,
-                sec_acc_lvl,
-                0x12, 0x34, 0x56, 0x78],
+            [ServiceID.SECURITY_ACCESS, sec_acc_lvl, 0x12, 0x34, 0x56, 0x78],
         )
         assert response == expected_response
 
@@ -184,11 +260,7 @@ class Test_iso14229_1:
         response = iso14229_1.read_data_by_periodic_identifier(transmission_mode, identifier)
 
         iso14229_1.tp.send_request.assert_called_once_with(
-            [
-                ServiceID.READ_DATA_BY_PERIODIC_IDENTIFIER,
-                transmission_mode,
-                0x11
-            ]
+            [ServiceID.READ_DATA_BY_PERIODIC_IDENTIFIER, transmission_mode, 0x11]
         )
         assert response == expected_response
 

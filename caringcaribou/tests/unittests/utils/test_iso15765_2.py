@@ -7,7 +7,6 @@ from caringcaribou.utils.iso15765_2 import IsoTp
 
 
 class TestIso15765_2:
-
     def test_isotp_initialization_default_bus(self, isotp_mocked_bus):
         assert isotp_mocked_bus.arb_id_request == 0x7E0
         assert isotp_mocked_bus.arb_id_response == 0x7E8
@@ -26,9 +25,9 @@ class TestIso15765_2:
         assert isotp.padding_enabled is False
 
     def test_isotp_initialization_invalid_padding_type(self, bus_mock):
-        expected_err_message = f"IsoTp: padding must be an integer or None, received 'invalid'"
+        expected_err_message = "IsoTp: padding must be an integer or None, received 'invalid'"
         with pytest.raises(TypeError) as err_message:
-            IsoTp(0x7E0, 0x7E8, padding_value='invalid')
+            IsoTp(0x7E0, 0x7E8, padding_value="invalid")
 
         assert expected_err_message == str(err_message.value)
 
@@ -57,7 +56,6 @@ class TestIso15765_2:
 
 
 class TestSendMessage:
-
     def test_send_message_standard_id(self, isotp_mocked_bus, message_mock):
         isotp_mocked_bus.send_message(data=[0x01, 0x02, 0x03], arbitration_id=0x123)
 
@@ -72,7 +70,6 @@ class TestSendMessage:
 
 
 class TestDecodeFrames:
-
     # Decode Single Frame
     def test_decode_sf_valid_frame(self, isotp_mocked_bus):
         frame = [
@@ -120,7 +117,7 @@ class TestDecodeFrames:
             # second nibble represents the upper 4 bits of the payload length.
             0x01,  # The second byte contains the lower 8 bits of the payload length.
             0xAA,
-            0xBB
+            0xBB,
         ]
 
         ff_data_len, data = isotp_mocked_bus.decode_ff(frame)
@@ -258,7 +255,6 @@ class TestDecodeFrames:
 
 
 class TestGetFramesFromMessage:
-
     # Get Frames from Message
     def test_single_frame_without_padding(self, isotp_mocked_bus):
         message = [0x01, 0x02, 0x03]
@@ -282,7 +278,7 @@ class TestGetFramesFromMessage:
             # FF
             [0x10, 0x0A, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
             # CF
-            [0x21, 0x07, 0x08, 0x09, 0x0A, 0x00, 0x00, 0x00]
+            [0x21, 0x07, 0x08, 0x09, 0x0A, 0x00, 0x00, 0x00],
         ]
 
     def test_maximum_length_message(self, isotp_mocked_bus):
@@ -323,13 +319,11 @@ class TestGetFramesFromMessage:
 
 
 class TestIndication:
-
     # Indication
     def test_indication_single_frame(self, isotp_mocked_bus):
         # SF with 3 bytes of data
         single_frame = [0x03, 0x11, 0x22, 0x33]
-        isotp_mocked_bus.bus.recv = MagicMock(
-            return_value=MagicMock(arbitration_id=0x7E0, data=single_frame))
+        isotp_mocked_bus.bus.recv = MagicMock(return_value=MagicMock(arbitration_id=0x7E0, data=single_frame))
 
         result = isotp_mocked_bus.indication()
 
@@ -345,8 +339,7 @@ class TestIndication:
 
     def test_indication_single_frame_timeout(self, isotp_mocked_bus):
         single_frame = [0x03, 0x11, 0x22, 0x33]
-        isotp_mocked_bus.bus.recv = MagicMock(
-            return_value=MagicMock(arbitration_id=0x7E0, data=single_frame))
+        isotp_mocked_bus.bus.recv = MagicMock(return_value=MagicMock(arbitration_id=0x7E0, data=single_frame))
 
         result = isotp_mocked_bus.indication(wait_window=0)
 
@@ -380,7 +373,6 @@ class TestIndication:
             ]
         )
 
-        # No trim padding
         result = isotp_mocked_bus.indication(trim_padding=False)
 
         assert result == [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0x00, 0x00, 0x00]
@@ -402,7 +394,6 @@ class TestIndication:
 
 
 class TestTransmit:
-
     # Transmit
     def test_transmit_no_frames(self, isotp_mocked_bus):
         result = isotp_mocked_bus.transmit([], arbitration_id=0x7E0, arbitration_id_flow_control=0x7E8)
@@ -462,9 +453,7 @@ class TestTransmit:
         # Overflow
         isotp_mocked_bus.decode_fc = MagicMock(return_value=(IsoTp.FC_FS_OVFLW, 0, 0))
         isotp_mocked_bus.bus = MagicMock()
-        isotp_mocked_bus.bus.recv = MagicMock(
-            return_value=MagicMock(arbitration_id=0x7E8, data=[0x30, 0x05, 0x00])
-        )
+        isotp_mocked_bus.bus.recv = MagicMock(return_value=MagicMock(arbitration_id=0x7E8, data=[0x30, 0x05, 0x00]))
 
         result = isotp_mocked_bus.transmit(frames, 0x7E0, 0x7E8)
 
@@ -490,7 +479,7 @@ class TestTransmit:
         isotp_mocked_bus.send_message.assert_called_once_with(frames[0], 0x7E0)
         assert result is None
 
-    @patch('time.sleep', return_value=None)
+    @patch("time.sleep", return_value=None)
     def test_transmit_multiple_frames_stmin(self, mock_sleep, isotp_mocked_bus):
         frames = [
             # FF
@@ -498,14 +487,12 @@ class TestTransmit:
             # CF1
             [0x21, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D],
             # CF2
-            [0x22, 0x0E, 0x0F]
+            [0x22, 0x0E, 0x0F],
         ]
         isotp_mocked_bus.send_message = MagicMock()
         isotp_mocked_bus.decode_fc = MagicMock(return_value=(IsoTp.FC_FS_CTS, 10, 10))  # STmin = 10 ms
         isotp_mocked_bus.bus = MagicMock()
-        isotp_mocked_bus.bus.recv = MagicMock(
-            return_value=MagicMock(arbitration_id=0x7E8, data=[0x30, 0x05, 0x00])
-        )
+        isotp_mocked_bus.bus.recv = MagicMock(return_value=MagicMock(arbitration_id=0x7E8, data=[0x30, 0x05, 0x00]))
 
         isotp_mocked_bus.transmit(frames, 0x7E0, 0x7E8)
 

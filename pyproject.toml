@@ -41,3 +41,7 @@ test = "caringcaribou.modules.test"
 uds_fuzz = "caringcaribou.modules.uds_fuzz"
 uds = "caringcaribou.modules.uds"
 xcp = "caringcaribou.modules.xcp"
+
+[tool.ruff]
+# Set the maximum line length to 120.
+line-length = 120
